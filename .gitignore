@@ -1,0 +1,7 @@
+.idea
+dist
+.stack-work
+dist-newstyle
+*.lock
+.ghc*
+*.iml
