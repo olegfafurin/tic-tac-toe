@@ -30,6 +30,7 @@ import Data.Aeson
 import Data.Aeson.Types
 import qualified Data.Text as T
 import Data.Text (Text)
+import Data.Sequence (Seq( (:<|) ) )
 import Web.HttpApiData
 import Brick (App (..), AttrMap, AttrName, Widget, Next, BrickEvent(..), EventM, defaultMain, padLeftRight, hBox, vBox, withAttr, neverShowCursor, str, attrMap, on, continue, halt)
 
@@ -41,6 +42,8 @@ data Game = Game
     , _starts :: Turn
     , _movesDone :: Int
     , _size :: Int
+    , _err :: Bool
+    , _game_over :: Bool
 --     , _field :: Grid Cell
     , _field :: [Cell]
     , _crosses :: Seq Cell
@@ -48,6 +51,16 @@ data Game = Game
     , _selected :: Cell
     }
     deriving (Show, Eq, Generic)
+
+data Turn = Player | Computer
+    deriving (Show, Eq, Generic)
+
+data CellState = EmptyCell | Cross | Zero | Selected
+    deriving (Show, Eq)
+
+data Direction = UpDir | RightDir | DownDir | LeftDir
+    deriving (Show)
+
 
 instance ToJSON (V2 Int) where
     toJSON (V2 x y) = object ["x" .= x, "y" .= y]
@@ -61,13 +74,6 @@ instance FromJSON (V2 Int) where
 
 -- instance FromHttpApiData (V2 Int)
 -- instance ToHttpApiData (V2 Int)
-
-data Turn = Player | Computer
-    deriving (Show, Eq, Generic)
-data CellState = EmptyCell | Cross | Zero | Selected
-    deriving (Show)
-data Direction = UpDir | RightDir | DownDir | LeftDir
-    deriving (Show)
 
 instance ToJSON Turn
 instance ToJSON Game
@@ -103,6 +109,11 @@ type Name = ()
 makeLenses ''Game
 
 
+opposite :: CellState -> CellState
+opposite Cross = Zero
+opposite Zero = Cross
+opposite _ = error "no opposite symbol"
+
 move :: Direction -> Game -> Game
 move dir game = case dir of
                 UpDir -> if game^.selected._y < game^.size - 1
@@ -125,6 +136,8 @@ fixedGame = Game { _id = Nothing
                  , _turn = Player
                  , _starts = Player
                  , _movesDone = 0
+                 , _err = False
+                 , _game_over = False
                  , _size = 10
                  , _field = [V2 x y | y <- [0..9], x <- [0..9]]
                  , _crosses = Empty
@@ -148,6 +161,8 @@ newGame :: Int -> Turn -> Game
 newGame boardSize turn = Game { _id = Nothing
                               , _turn = turn
                               , _starts = turn
+                              , _err = False
+                              , _game_over = False
                               , _movesDone = 0
                               , _size = boardSize
                               , _field = [V2 x y | y <- [0..boardSize - 1], x <- [0..boardSize - 1]]
@@ -155,6 +170,20 @@ newGame boardSize turn = Game { _id = Nothing
                               , _zeroes = Empty
                               , _selected = V2 (boardSize `div` 2) (boardSize `div` 2)
                               }
+
+genCell :: [Int] -> [Cell]
+genCell (a : b : rest) = V2 a b : genCell rest
+genCell [x] = error "function genCell is designed for infinite lists only"
+genCell [] = []
+
+
+
+makeMove :: CellState -> Game -> IO Game
+makeMove sym game = do
+    gen <- getStdGen
+    let newCell = ((take 1 $ filter ((&&) <$> (flip notElem (game ^. crosses)) <*> (flip notElem (game ^. zeroes))) $ genCell $ randomRs (1, game^.size) gen) !! 0)
+    let signField = if (sym == Cross) then crosses else zeroes
+    return $ game & signField %~ ((:<|) newCell)
 
 
 

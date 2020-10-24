@@ -8,7 +8,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 
-
 module Server where
 
 import Game
@@ -39,33 +38,14 @@ type UserAPI = "newgame" :> QueryParam "size" Int :> QueryParam "turn" Turn :> G
           :<|> "move" :> QueryParam "game_id" Int :> QueryParam "cell" Cell :> Get '[JSON] Game
           :<|> "some" :> QueryParam "lol" Int :> Get '[JSON] Game
 
--- QueryParam "cell" Cell
-
--- server :: IO (Server UserAPI)
--- server = return $ (return $ unsafeRunIO newGame :: Server UserAPI)
---
--- userAPI :: Proxy UserAPI
--- userAPI = Proxy
---
--- app :: IO Application
--- app = server >>= return serve userAPI
---
--- main :: IO ()
--- main = app >>= return $ run 2039
 
 data Load = Load { a :: IORef [Business]}
 data Business = Busy | Free
 
-makeState :: IO Load
-makeState = do
-    ref <- newIORef [Free | i <- [1..100]]
-    return $ Load ref
-
-
--- moveHandler :: Int -> Cell -> Handler Game
--- moveHandler x y = do
---     game <- liftIO newGame
---     return game
+-- makeState :: IO Load
+-- makeState = do
+--     ref <- newIORef [Free | i <- [1..100]]
+--     return $ Load ref
 
 
 newGameHandler :: (MVar [Maybe Game]) -> Maybe Int -> Maybe Turn -> Handler Int
@@ -88,8 +68,8 @@ moveHandler mvar gameId cell = do
             Nothing -> myGame
             Just someGame -> Just $ someGame & turn %~ changeTurn
     let newState = games & element gameN .~  updatedGame
-    liftIO $ putMVar mvar (newState)
-    return $ if (isJust updatedGame) then fromJust updatedGame else errGame
+    liftIO $ putMVar mvar newState
+    return $ if isJust updatedGame then fromJust updatedGame else errGame
 
 userAPI :: Proxy UserAPI
 userAPI = Proxy
@@ -98,22 +78,9 @@ someHandler :: (Maybe Int) -> Handler Game
 someHandler x = return errGame
 
 
-
 main :: IO ()
 main = do
     mv <- newMVar ([Nothing :: Maybe Game | i <- [1..100]])
---     putStrLn $ show $ toUrlPiece Player
---     putStrLn $ show $ toUrlPiece (V2 (3 :: Int) (4 :: Int))
     let server :: Server UserAPI = (newGameHandler mv) :<|> (moveHandler mv) :<|> someHandler
     let app :: Application = serve userAPI server
     run 2039 app
-
-
-
--- main :: IO ()
--- main = do
---     (server :: Server UserAPI) <- newGame
---     let (userAPI :: Proxy UserAPI) = Proxy
---     (app :: Application) <- serve userAPI server
---     run 2039 app
-
