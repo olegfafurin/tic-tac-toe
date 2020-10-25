@@ -14,9 +14,10 @@ build-type:           Simple
 cabal-version:        >=1.10
 
 executable client
-  main-is:              Main.hs
+  main-is:              Client.hs
   other-modules:        Game
                         UI
+                        API
   -- other-extensions:
   build-depends:        base >= 4.7 && < 5,
                         linear,
@@ -26,18 +27,21 @@ executable client
                         lens,
                         containers,
                         servant-server,
+                        servant-client,
                         random,
                         aeson,
                         http-api-data,
-                        text
+                        text,
+                        http-client
   hs-source-dirs:       src
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -main-is Client
   default-language:     Haskell2010
 
 
 executable server
   main-is:              Server.hs
   other-modules:        Game
+                        API
   -- other-extensions:
   build-depends:        base >= 4.7 && < 5,
                         linear,

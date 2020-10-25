@@ -1,11 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
-module UI where
+module UI
+    ( handleEvent
+    , gameAttrMap
+    , drawUI
+    ) where
 
 
 import Game
 import Control.Lens hiding ((<|), (|>), (:>), (:<), Empty)
-import Control.Concurrent.MVar
 import Linear.V2 (V2(..), _x, _y)
 import Brick (App (..), AttrMap, AttrName, Widget, Next, BrickEvent(..), EventM, defaultMain, padLeftRight, hBox, vBox, withAttr, neverShowCursor, str, attrMap, on, continue, halt)
 import qualified Graphics.Vty as V
@@ -36,9 +40,9 @@ drawGrid g = B.borderWithLabel (str "tic-tac-toe")
                 cellsInRow y = [padLeftRight 1 $ drawCoord (V2 x y) | x <- [0..g^.size-1]]
                 drawCoord    = drawCell . cellAt
                 cellAt c
+                  | c == g ^. selected    = Selected
                   | c `elem` g ^. crosses = Cross
                   | c `elem` g ^. zeroes  = Zero
-                  | c == g ^. selected    = Selected
                   | otherwise             = EmptyCell
 
 drawCell :: CellState -> Widget Name
@@ -69,7 +73,9 @@ main = do
                   , appHandleEvent = handleEvent
                   , appStartEvent = return
                   , appAttrMap = const gameAttrMap }
-    let initialState = newGame 10 Player
+    putStrLn "Enter random seed:"
+    (sd :: Int) <- readLn
+    let initialState = newGame 0 10 sd Player
     putStrLn $ show initialState
     finalState <- defaultMain app initialState
     putStrLn "Done"
