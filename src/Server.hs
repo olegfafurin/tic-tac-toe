@@ -26,13 +26,13 @@ import Game
   ( Cell
   , CellState(..)
   , Game(..)
-  , Turn(..)
-  , changeTurn
+  , Player(..)
   , crosses
   , errGame
   , fixedGame
   , makeMove
   , newGame
+  , oppositePlayer
   , starts
   , turn
   , zeroes
@@ -42,7 +42,7 @@ import Network.Wai.Handler.Warp
 import Servant
 import System.IO.Unsafe
 
-newGameHandler :: (MVar [Maybe Game]) -> Int -> Int -> Turn -> Handler Game
+newGameHandler :: (MVar [Maybe Game]) -> Int -> Int -> Player -> Handler Game
 newGameHandler mvar size seed turn = do
   games <- liftIO $ takeMVar mvar
   let freeSpot = elemIndex Nothing games
@@ -68,18 +68,14 @@ moveHandler mvar gameId cell = do
         previousGame <- games !! gameId
         let uSign =
               case previousGame ^. starts of
-                Player -> crosses
+                User -> crosses
                 Computer -> zeroes
         updatedGame :: Game <-
           if cell `notElem` (previousGame ^. crosses) &&
              cell `notElem` (previousGame ^. zeroes)
-            then Just (previousGame & uSign %~ ((:<|) cell))
+            then Just (previousGame & uSign %~ ((:) cell))
             else Nothing
-        let compSign =
-              case previousGame ^. starts of
-                Player -> Zero
-                Computer -> Cross
-        let nGame = unsafePerformIO (makeMove compSign updatedGame)
+        let nGame = makeMove updatedGame
         return $ (nGame, gameId)
   liftIO $
     case param of

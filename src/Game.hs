@@ -2,18 +2,18 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE InstanceSigs #-}
--- {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
+-- {-# LANGUAGE LambdaCase #-}
 module Game
   ( moveCursor
   , newGame
   , Game
   , Name
   , Cell(..)
-  , Turn(..)
+  , Player(..)
   , CellState(..)
   , Direction(..)
   , selected
@@ -21,7 +21,7 @@ module Game
   , crosses
   , size
   , fixedGame
-  , changeTurn
+  , oppositePlayer
   , turn
   , errGame
   , makeMove
@@ -54,8 +54,10 @@ import Brick
   )
 import Data.Aeson
 import Data.Aeson.Types
-import Data.Sequence (Seq(..), (<|))
-import Data.Sequence (Seq((:<|)))
+-- import Data.Sequence (Seq(..), (<|))
+-- import Data.Sequence (Seq((:<|)))
+import Data.List
+import Data.Ord
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics
@@ -69,22 +71,22 @@ type Cell = V2 Int
 data Game =
   Game
     { _gid :: Int
-    , _turn :: Turn
-    , _starts :: Turn
+    , _turn :: Player
+    , _starts :: Player
     , _randomSeed :: Int
     , _movesDone :: Int
     , _size :: Int
     , _err :: Bool
     , _game_over :: Bool
     , _field :: [Cell]
-    , _crosses :: Seq Cell
-    , _zeroes :: Seq Cell
+    , _crosses :: [Cell]
+    , _zeroes :: [Cell]
     , _selected :: Cell
     }
   deriving (Show, Eq, Generic)
 
-data Turn
-  = Player
+data Player
+  = User
   | Computer
   deriving (Show, Eq, Generic)
 
@@ -111,23 +113,23 @@ instance FromJSON (V2 Int) where
 
 -- instance FromHttpApiData (V2 Int)
 -- instance ToHttpApiData (V2 Int)
-instance ToJSON Turn
+instance ToJSON Player
 
 instance ToJSON Game
 
-instance FromJSON Turn
+instance FromJSON Player
 
 instance FromJSON Game
 
 -- instance FromHttpApiData (V2 Int)
-instance ToHttpApiData Turn where
-  toUrlPiece :: Turn -> Text
-  toUrlPiece Player = "player"
+instance ToHttpApiData Player where
+  toUrlPiece :: Player -> Text
+  toUrlPiece User = "player"
   toUrlPiece Computer = "computer"
 
-instance FromHttpApiData Turn where
-  parseUrlPiece :: Text -> Either Text Turn
-  parseUrlPiece "player" = Right Player
+instance FromHttpApiData Player where
+  parseUrlPiece :: Text -> Either Text Player
+  parseUrlPiece "player" = Right User
   parseUrlPiece "computer" = Right Computer
   parseUrlPiece a = Left a
 
@@ -177,27 +179,27 @@ fixedGame :: Game
 fixedGame =
   Game
     { _gid = (-1)
-    , _turn = Player
-    , _starts = Player
+    , _turn = User
+    , _starts = User
     , _movesDone = 0
     , _err = False
     , _randomSeed = 1
     , _game_over = False
     , _size = 10
     , _field = [V2 x y | y <- [0 .. 9], x <- [0 .. 9]]
-    , _crosses = Empty
-    , _zeroes = Empty
+    , _crosses = []
+    , _zeroes = []
     , _selected = V2 5 5
     }
 
-changeTurn :: Turn -> Turn
-changeTurn Computer = Player
-changeTurn Player = Computer
+oppositePlayer :: Player -> Player
+oppositePlayer Computer = User
+oppositePlayer User = Computer
 
 errGame :: Game
 errGame = newGame 101 0 1 Computer
 
-newGame :: Int -> Int -> Int -> Turn -> Game
+newGame :: Int -> Int -> Int -> Player -> Game
 newGame gameId boardSize seed turn =
   Game
     { _gid = gameId
@@ -211,10 +213,9 @@ newGame gameId boardSize seed turn =
     , _field = [V2 x y | y <- [0 .. boardSize - 1], x <- [0 .. boardSize - 1]]
     , _crosses =
         if turn == Computer && gameId /= (-1)
-          then (head $ genCell $ randomRs (0, boardSize - 1) (mkStdGen seed)) :<|
-               Empty
-          else Empty
-    , _zeroes = Empty
+          then [(head $ genCell $ randomRs (0, boardSize - 1) (mkStdGen seed))]
+          else []
+    , _zeroes = []
     , _selected = V2 (boardSize `div` 2) (boardSize `div` 2)
     }
 
@@ -229,19 +230,83 @@ getRandomCell a = do
   y <- getStdRandom $ randomR (0, a)
   return $ V2 x y
 
-makeMove :: CellState -> Game -> IO Game
-makeMove sym game = do
-  let gen = mkStdGen $ game ^. randomSeed
-  let newCell =
-        ((take 1 $
-          filter
-            ((&&) <$> (flip notElem (game ^. crosses)) <*>
-             (flip notElem (game ^. zeroes))) $
-          genCell $
-          randomRs (0, game ^. size - 1) gen) !! 0)
-  let signField =
-        if (sym == Cross)
-          then crosses
-          else zeroes
-  newSeed <- randomRIO (0, game ^. size - 1)
-  return $ game & signField %~ ((:<|) newCell) & randomSeed .~ newSeed
+-- makeMove :: CellState -> Game -> IO Game
+-- makeMove sym game = do
+--   let gen = mkStdGen $ game ^. randomSeed
+--   let newCell =
+--         ((take 1 $
+--           filter
+--             ((&&) <$> (flip notElem (game ^. crosses)) <*>
+--              (flip notElem (game ^. zeroes))) $
+--           genCell $
+--           randomRs (0, game ^. size - 1) gen) !! 0)
+--   let signField =
+--         if (sym == Cross)
+--           then crosses
+--           else zeroes
+--   newSeed <- randomRIO (0, game ^. size - 1)
+--   return $ game & signField %~ ((:<|) newCell) & randomSeed .~ newSeed
+
+winStrike :: Int -> Int
+winStrike size
+  | size == 3 = 3
+  | size <= 5 = 4
+  | otherwise = 5
+
+getWinner :: Game -> Maybe Player
+getWinner game =
+  if (any (flip isInfixOf (game ^. crosses)) (possibleWinSets game))
+    then Just $ game ^. starts
+    else if (any (flip isInfixOf (game ^. zeroes)) (possibleWinSets game))
+      then Just $ oppositePlayer $ game ^. starts
+      else Nothing
+
+
+possibleWinSets :: Game -> [[Cell]]
+possibleWinSets game = concat $ rows <> columns <> mainDiag <> sideDiag
+  where
+  rows =
+    [[[V2 i (j + k) | k <- [0 .. w - 1]] | j <- [0 .. s - w]] | i <- [0 .. s - 1]]
+  columns =
+    [[[V2 (i + k) j | k <- [0 .. w - 1]] | i <- [0 .. s - w]] | j <- [0 .. s - 1]]
+  mainDiag =
+    [[[V2 (i + k) (j + k) | k <- [0 .. w - 1]] | i <- [0 .. s - w]] | j <- [0 .. s - w]]
+  sideDiag =
+    [[[V2 (i + k) (j - k) | k <- [0 .. w - 1]] | i <- [0 .. s - w]] | j <- [w - 1 .. s - 1]]
+  w = winStrike s
+  s = game ^. size
+
+
+isGameOver :: Game -> Bool
+isGameOver game
+  | (length $ game ^. crosses <> game ^. zeroes) == (game ^. size) ^ 2 = True
+  | otherwise =
+    case getWinner game of
+      Just _ -> True
+      Nothing -> False
+
+
+movePriority :: ([Cell], [Cell]) -> [Cell] -> Int
+movePriority (compSigns, userSigns) proposal =
+  if (length $ proposal `intersect` userSigns) /= 0 then 0
+  else if alreadySet == (length proposal) then 0 else alreadySet
+  where alreadySet = length $ proposal `intersect` compSigns
+
+
+makeMove :: Game -> Game
+makeMove game = proposal
+  where
+    alreadySetCells = (game ^. compLens, game ^. userLens)
+    pos = possibleWinSets game
+    available :: [Cell] = maximumBy (comparing $ movePriority $ alreadySetCells) pos
+    compSigns = fst alreadySetCells
+    (compLens, userLens) = case game ^. starts of
+      User     -> (zeroes, crosses)
+      Computer -> (crosses, zeroes)
+    findFreeCell :: [Cell] -> Maybe Cell = find (flip notElem compSigns)
+    l = case game ^. starts of
+      User     -> zeroes
+      Computer -> crosses
+    proposal = case findFreeCell available of
+      Just cell -> game & l %~ (<> [cell])
+      Nothing   -> game

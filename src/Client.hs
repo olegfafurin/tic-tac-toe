@@ -39,7 +39,7 @@ import Brick
   )
 
 -- import Servant.Types.SourceT (foreach)
-import Game (Turn(..), newGame)
+import Game (Player(..), newGame)
 import System.Random
 import UI (drawUI, gameAttrMap, handleEvent, mkNewgame)
 
@@ -53,7 +53,7 @@ main = do
   let firstPlayer =
         case randomTurn of
           True -> Computer
-          False -> Player
+          False -> User
   pseudoGame <- mkNewgame side randomSeed firstPlayer
 --     let sendNewGame :<|> sendMove = client userAPI
   finalState <- defaultMain app pseudoGame

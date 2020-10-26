@@ -35,7 +35,7 @@ sendNewGame :<|> sendMove = client userAPI
 mkReqMove :: Game -> ClientM Game
 mkReqMove g = sendMove (g ^. gid) (g ^. selected)
 
-mkReqNewgame :: Int -> Int -> Turn -> ClientM Game
+mkReqNewgame :: Int -> Int -> Player -> ClientM Game
 mkReqNewgame = sendNewGame
 
 mkMove :: Game -> IO Game
@@ -49,7 +49,7 @@ mkMove g = do
     Left err -> return g
     Right nGame -> return nGame
 
-mkNewgame :: Int -> Int -> Turn -> IO Game
+mkNewgame :: Int -> Int -> Player -> IO Game
 mkNewgame size seed t = do
   manager' <- newManager defaultManagerSettings
   res <-
@@ -126,7 +126,7 @@ main = do
           }
   putStrLn "Enter random seed:"
   (sd :: Int) <- readLn
-  let initialState = newGame 0 10 sd Player
+  let initialState = newGame 0 10 sd User
   putStrLn $ show initialState
   finalState <- defaultMain app initialState
   putStrLn "Done"
