@@ -28,6 +28,7 @@ executable client
                         containers,
                         servant-server,
                         servant-client,
+                        servant,
                         random,
                         aeson,
                         http-api-data,

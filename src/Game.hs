@@ -9,7 +9,7 @@
 
 
 module Game
-    ( move
+    ( moveCursor
     , newGame
     , Game
     , Name
@@ -17,7 +17,7 @@ module Game
     , Turn (..)
     , CellState (..)
     , Direction (..)
-    , selected, zeroes, crosses, size, fixedGame, changeTurn, turn, errGame
+    , selected, zeroes, crosses, size, fixedGame, changeTurn, turn, errGame, makeMove, starts, gid
     ) where
 
 import Control.Lens hiding ((<|), (|>), (:>), (:<),(.=), Empty)
@@ -37,7 +37,7 @@ import Brick (App (..), AttrMap, AttrName, Widget, Next, BrickEvent(..), EventM,
 
 type Cell = V2 Int
 data Game = Game
-    { _id :: Maybe Int
+    { _gid :: Maybe Int
     , _turn :: Turn
     , _starts :: Turn
     , _randomSeed :: Int
@@ -45,7 +45,6 @@ data Game = Game
     , _size :: Int
     , _err :: Bool
     , _game_over :: Bool
---     , _field :: Grid Cell
     , _field :: [Cell]
     , _crosses :: Seq Cell
     , _zeroes :: Seq Cell
@@ -110,13 +109,14 @@ type Name = ()
 makeLenses ''Game
 
 
-opposite :: CellState -> CellState
-opposite Cross = Zero
-opposite Zero = Cross
-opposite _ = error "no opposite symbol"
+oppositeSign :: CellState -> CellState
+oppositeSign Cross = Zero
+oppositeSign Zero = Cross
+oppositeSign _ = error "no opposite sign"
 
-move :: Direction -> Game -> Game
-move dir game = case dir of
+
+moveCursor :: Direction -> Game -> Game
+moveCursor dir game = case dir of
                 UpDir -> if game^.selected._y < game^.size - 1
                             then game & selected._y +~ 1
                             else game
@@ -133,7 +133,7 @@ move dir game = case dir of
 
 
 fixedGame :: Game
-fixedGame = Game { _id = Nothing
+fixedGame = Game { _gid = Nothing
                  , _turn = Player
                  , _starts = Player
                  , _movesDone = 0
@@ -147,10 +147,6 @@ fixedGame = Game { _id = Nothing
                  , _selected = V2 5 5
                  }
 
--- newGame :: Game
--- newGame = do
---     gameConfig <- initGameConfig
---     return gameConfig
 
 changeTurn :: Turn -> Turn
 changeTurn Computer = Player
@@ -160,7 +156,7 @@ errGame :: Game
 errGame = newGame 101 0 1 Computer
 
 newGame :: Int -> Int -> Int -> Turn -> Game
-newGame gameId boardSize seed turn = Game { _id = Just gameId
+newGame gameId boardSize seed turn = Game { _gid = Just gameId
                               , _turn = turn
                               , _starts = turn
                               , _err = False

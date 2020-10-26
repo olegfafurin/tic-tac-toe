@@ -1,14 +1,26 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TypeOperators #-}
 
 module UI
     ( handleEvent
     , gameAttrMap
     , drawUI
+    , mkNewgame
     ) where
 
-
+import Data.Aeson
+import Data.Proxy
+import GHC.Generics
+import Servant.API
+import Servant.Client
+import Servant.Types.SourceT (foreach)
+import System.IO.Unsafe
+import Network.HTTP.Client (newManager, defaultManagerSettings)
 import Game
+import API
 import Control.Lens hiding ((<|), (|>), (:>), (:<), Empty)
 import Linear.V2 (V2(..), _x, _y)
 import Brick (App (..), AttrMap, AttrName, Widget, Next, BrickEvent(..), EventM, defaultMain, padLeftRight, hBox, vBox, withAttr, neverShowCursor, str, attrMap, on, continue, halt)
@@ -18,13 +30,40 @@ import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Border.Style as BS
 
 
+sendNewGame :<|> sendMove = client userAPI
+
+mkReqMove :: Game -> ClientM Game
+mkReqMove g = sendMove (g ^. gid) (Just (g ^. selected))
+
+
+mkReqNewgame :: Int -> Int -> Turn -> ClientM Game
+mkReqNewgame size seed t = sendNewGame (Just size) (Just seed) (Just t)
+
+mkMove :: Game -> IO Game
+mkMove g = do
+        manager' <- newManager defaultManagerSettings
+        res <- runClientM (mkReqMove g) (mkClientEnv manager' (BaseUrl Http "localhost" 2039 ""))
+        case res of
+                Left err    -> return g
+                Right nGame -> return nGame
+
+mkNewgame :: Int -> Int -> Turn -> IO Game
+mkNewgame size seed t = do
+        manager' <- newManager defaultManagerSettings
+        res <- runClientM (mkReqNewgame size seed t) (mkClientEnv manager' (BaseUrl Http "localhost" 2039 ""))
+        case res of
+                Left err    -> return $ error "Unable to make a new game"
+                Right nGame -> return nGame
+
+
 handleEvent :: Game -> BrickEvent Name () -> EventM Name (Next Game)
+handleEvent g (VtyEvent (V.EvKey V.KEnter []))      = continue $ unsafePerformIO $ mkMove g
 handleEvent g (VtyEvent (V.EvKey V.KEsc []))        = halt g
 handleEvent g (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt g
-handleEvent g (VtyEvent (V.EvKey V.KUp []))         = continue $ move UpDir g
-handleEvent g (VtyEvent (V.EvKey V.KRight []))      = continue $ move RightDir g
-handleEvent g (VtyEvent (V.EvKey V.KDown []))       = continue $ move DownDir g
-handleEvent g (VtyEvent (V.EvKey V.KLeft []))       = continue $ move LeftDir g
+handleEvent g (VtyEvent (V.EvKey V.KUp []))         = continue $ moveCursor UpDir g
+handleEvent g (VtyEvent (V.EvKey V.KRight []))      = continue $ moveCursor RightDir g
+handleEvent g (VtyEvent (V.EvKey V.KDown []))       = continue $ moveCursor DownDir g
+handleEvent g (VtyEvent (V.EvKey V.KLeft []))       = continue $ moveCursor LeftDir g
 handleEvent g _                                     = continue g
 
 

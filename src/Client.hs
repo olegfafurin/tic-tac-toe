@@ -13,7 +13,7 @@ import Servant.Client
 import Servant
 -- import Servant.Types.SourceT (foreach)
 import Game (newGame, Turn (..))
-import UI (handleEvent, gameAttrMap, drawUI)
+import UI (handleEvent, gameAttrMap, drawUI, mkNewgame)
 import API (UserAPI, userAPI)
 import Brick (App (..), AttrMap, AttrName, Widget, Next, BrickEvent(..), EventM, defaultMain, padLeftRight, hBox, vBox, withAttr, neverShowCursor, str, attrMap, on, continue, halt)
 import System.Random
@@ -29,8 +29,8 @@ main = do
     let firstPlayer = case randomTurn of
             True  -> Computer
             False -> Player
-    let pseudoGame = newGame (-1) side randomSeed firstPlayer
-    let sendNewGame :<|> sendMove = client userAPI
+    pseudoGame <- mkNewgame side randomSeed firstPlayer
+--     let sendNewGame :<|> sendMove = client userAPI
     finalState <- defaultMain app pseudoGame
     putStrLn $ show pseudoGame
     putStrLn "Goodbye!"

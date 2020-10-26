@@ -13,12 +13,17 @@ module Server where
 import Game
     ( Game(..)
     , Cell
+    , CellState (..)
     , Turn (..)
     , newGame
     , fixedGame
     , errGame
     , changeTurn
     , turn
+    , starts
+    , makeMove
+    , crosses
+    , zeroes
     )
 import API (userAPI, UserAPI)
 import Servant
@@ -31,9 +36,11 @@ import Control.Monad.Trans
 import Control.Concurrent.Map
 import Control.Concurrent.MVar
 import Control.Lens
+import Control.Monad
 import Data.IORef
 import Data.Maybe
 import Data.List
+import Data.Sequence (Seq( (:<|) ) )
 
 
 
@@ -61,20 +68,32 @@ newGameHandler mvar size seed turn = do
 moveHandler :: (MVar [Maybe Game]) -> Maybe Int -> Maybe Cell -> Handler Game
 moveHandler mvar gameId cell = do
     games <- liftIO $ takeMVar mvar
-    let gameN = fromJust gameId
-    let previousGame = games !! gameN
-    let updatedGame = case previousGame of
-            Nothing -> myGame
-            Just someGame -> Just $ someGame & turn %~ changeTurn
-    let newState = games & element gameN .~  updatedGame
-    liftIO $ putMVar mvar newState
-    case updatedGame
-    return $ if isJust updatedGame then fromJust updatedGame else errGame
+    let param :: Maybe (Game, Int) = do
+            gameN <- gameId
+            moveCell <- cell
+            previousGame <- games !! gameN
+            let uSign = case previousGame ^. starts of
+                    Player   -> crosses
+                    Computer -> zeroes
+            updatedGame :: Game <- if moveCell `notElem` (previousGame ^. crosses) && moveCell `notElem` (previousGame ^. zeroes)
+                                then Just (previousGame & uSign %~ ((:<|) moveCell))
+                                else Nothing
+            let compSign = case previousGame ^. starts of
+                    Player   -> Zero
+                    Computer -> Cross
+            let nGame = unsafePerformIO (makeMove compSign updatedGame)
+            return $ (nGame, gameN)
+    liftIO $ case param of
+            Just (game, num)  -> putMVar mvar (games & element num .~ Just game)
+            Nothing -> putMVar mvar games
+    case param of
+            Just (game, num) -> return game
+            Nothing          -> throwError err400
 
 
 main :: IO ()
 main = do
     mv <- newMVar ([Nothing :: Maybe Game | i <- [1..100]])
-    let server :: Server UserAPI = (newGameHandler mv) :<|> (moveHandler mv) :<|> someHandler
+    let server :: Server UserAPI = (newGameHandler mv) :<|> (moveHandler mv)
     let app :: Application = serve userAPI server
     run 2039 app
