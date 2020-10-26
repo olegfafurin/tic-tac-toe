@@ -22,21 +22,23 @@ import Data.List
 import Data.Maybe
 import Data.Sequence (Seq((:<|)))
 import GHC.Generics
+-- import Game
+--   ( Cell
+--   , CellState(..)
+--   , Game(..)
+--   , Player(..)
+--   , crosses
+--   , errGame
+--   , fixedGame
+--   , makeMove
+--   , newGame
+--   , oppositePlayer
+--   , starts
+--   , turn
+--   , zeroes
+--   ,isGame
+--   )
 import Game
-  ( Cell
-  , CellState(..)
-  , Game(..)
-  , Player(..)
-  , crosses
-  , errGame
-  , fixedGame
-  , makeMove
-  , newGame
-  , oppositePlayer
-  , starts
-  , turn
-  , zeroes
-  )
 import Linear.V2 (V2(..), _x, _y)
 import Network.Wai.Handler.Warp
 import Servant
@@ -85,9 +87,15 @@ moveHandler mvar gameId cell = do
     Just (game, num) -> return game
     Nothing -> throwError err400
 
+finishHandler :: (MVar [Maybe Game]) -> Int -> Handler ()
+finishHandler mvar gameId = do
+    games <- liftIO $ takeMVar mvar
+    liftIO $ putMVar mvar (games & element gameId .~ Nothing)
+    return ()
+
 main :: IO ()
 main = do
   mv <- newMVar ([Nothing :: Maybe Game | i <- [1 .. 100]])
-  let server :: Server UserAPI = (newGameHandler mv) :<|> (moveHandler mv)
+  let server :: Server UserAPI = (newGameHandler mv) :<|> (moveHandler mv) :<|> (finishHandler mv)
   let app :: Application = serve userAPI server
   run 2039 app

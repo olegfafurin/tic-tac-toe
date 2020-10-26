@@ -22,11 +22,11 @@ module Game
   , size
   , fixedGame
   , oppositePlayer
-  , turn
   , errGame
   , makeMove
   , starts
   , gid
+  , isGameOver
   ) where
 
 import Control.Lens hiding ((:<), (:>), Empty, (.=), (<|), (|>))
@@ -54,15 +54,11 @@ import Brick
   )
 import Data.Aeson
 import Data.Aeson.Types
--- import Data.Sequence (Seq(..), (<|))
--- import Data.Sequence (Seq((:<|)))
 import Data.List
 import Data.Ord
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics
-
--- import Control.Comonad
 import System.Random
 import Web.HttpApiData
 
@@ -71,14 +67,9 @@ type Cell = V2 Int
 data Game =
   Game
     { _gid :: Int
-    , _turn :: Player
     , _starts :: Player
-    , _randomSeed :: Int
-    , _movesDone :: Int
     , _size :: Int
-    , _err :: Bool
-    , _game_over :: Bool
-    , _field :: [Cell]
+    , _winner :: Maybe Player
     , _crosses :: [Cell]
     , _zeroes :: [Cell]
     , _selected :: Cell
@@ -179,14 +170,9 @@ fixedGame :: Game
 fixedGame =
   Game
     { _gid = (-1)
-    , _turn = User
     , _starts = User
-    , _movesDone = 0
-    , _err = False
-    , _randomSeed = 1
-    , _game_over = False
     , _size = 10
-    , _field = [V2 x y | y <- [0 .. 9], x <- [0 .. 9]]
+    , _winner = Nothing
     , _crosses = []
     , _zeroes = []
     , _selected = V2 5 5
@@ -203,14 +189,9 @@ newGame :: Int -> Int -> Int -> Player -> Game
 newGame gameId boardSize seed turn =
   Game
     { _gid = gameId
-    , _turn = turn
     , _starts = turn
-    , _err = False
-    , _randomSeed = seed
-    , _game_over = False
-    , _movesDone = 0
     , _size = boardSize
-    , _field = [V2 x y | y <- [0 .. boardSize - 1], x <- [0 .. boardSize - 1]]
+    , _winner = Nothing
     , _crosses =
         if turn == Computer && gameId /= (-1)
           then [(head $ genCell $ randomRs (0, boardSize - 1) (mkStdGen seed))]
@@ -230,22 +211,6 @@ getRandomCell a = do
   y <- getStdRandom $ randomR (0, a)
   return $ V2 x y
 
--- makeMove :: CellState -> Game -> IO Game
--- makeMove sym game = do
---   let gen = mkStdGen $ game ^. randomSeed
---   let newCell =
---         ((take 1 $
---           filter
---             ((&&) <$> (flip notElem (game ^. crosses)) <*>
---              (flip notElem (game ^. zeroes))) $
---           genCell $
---           randomRs (0, game ^. size - 1) gen) !! 0)
---   let signField =
---         if (sym == Cross)
---           then crosses
---           else zeroes
---   newSeed <- randomRIO (0, game ^. size - 1)
---   return $ game & signField %~ ((:<|) newCell) & randomSeed .~ newSeed
 
 winStrike :: Int -> Int
 winStrike size
@@ -304,9 +269,9 @@ makeMove game = proposal
       User     -> (zeroes, crosses)
       Computer -> (crosses, zeroes)
     findFreeCell :: [Cell] -> Maybe Cell = find (flip notElem compSigns)
-    l = case game ^. starts of
+    cl = case game ^. starts of
       User     -> zeroes
       Computer -> crosses
     proposal = case findFreeCell available of
-      Just cell -> game & l %~ (<> [cell])
+      Just cell -> game & cl %~ (<> [cell])
       Nothing   -> game

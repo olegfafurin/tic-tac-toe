@@ -5,10 +5,8 @@
 {-# LANGUAGE TypeOperators #-}
 
 module UI
-  ( handleEvent
-  , gameAttrMap
+  ( gameAttrMap
   , drawUI
-  , mkNewgame
   ) where
 
 import API
@@ -27,51 +25,9 @@ import Linear.V2 (V2(..), _x, _y)
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Servant.API
 import Servant.Client
-import Servant.Types.SourceT (foreach)
-import System.IO.Unsafe
+-- import Servant.Types.SourceT (foreach)
 
-sendNewGame :<|> sendMove = client userAPI
 
-mkReqMove :: Game -> ClientM Game
-mkReqMove g = sendMove (g ^. gid) (g ^. selected)
-
-mkReqNewgame :: Int -> Int -> Player -> ClientM Game
-mkReqNewgame = sendNewGame
-
-mkMove :: Game -> IO Game
-mkMove g = do
-  manager' <- newManager defaultManagerSettings
-  res <-
-    runClientM
-      (mkReqMove g)
-      (mkClientEnv manager' (BaseUrl Http "localhost" 2039 ""))
-  case res of
-    Left err -> return g
-    Right nGame -> return nGame
-
-mkNewgame :: Int -> Int -> Player -> IO Game
-mkNewgame size seed t = do
-  manager' <- newManager defaultManagerSettings
-  res <-
-    runClientM
-      (mkReqNewgame size seed t)
-      (mkClientEnv manager' (BaseUrl Http "localhost" 2039 ""))
-  case res of
-    Left err -> return $ error "Unable to make a new game"
-    Right nGame -> return nGame
-
-handleEvent :: Game -> BrickEvent Name () -> EventM Name (Next Game)
-handleEvent g (VtyEvent (V.EvKey V.KEnter [])) = do
-  res <- liftIO $ mkMove g
-  continue res
-handleEvent g (VtyEvent (V.EvKey V.KEsc [])) = halt g
-handleEvent g (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt g
-handleEvent g (VtyEvent (V.EvKey V.KUp [])) = continue $ moveCursor UpDir g
-handleEvent g (VtyEvent (V.EvKey V.KRight [])) =
-  continue $ moveCursor RightDir g
-handleEvent g (VtyEvent (V.EvKey V.KDown [])) = continue $ moveCursor DownDir g
-handleEvent g (VtyEvent (V.EvKey V.KLeft [])) = continue $ moveCursor LeftDir g
-handleEvent g _ = continue g
 
 drawUI :: Game -> [Widget Name]
 drawUI g = [C.center $ drawGrid g]
@@ -114,19 +70,19 @@ gameAttrMap =
     , (selectedAttr, V.black `on` V.yellow)
     ]
 
-main :: IO ()
-main = do
-  let app =
-        App
-          { appDraw = drawUI
-          , appChooseCursor = neverShowCursor
-          , appHandleEvent = handleEvent
-          , appStartEvent = return
-          , appAttrMap = const gameAttrMap
-          }
-  putStrLn "Enter random seed:"
-  (sd :: Int) <- readLn
-  let initialState = newGame 0 10 sd User
-  putStrLn $ show initialState
-  finalState <- defaultMain app initialState
-  putStrLn "Done"
+-- main :: IO ()
+-- main = do
+--   let app =
+--         App
+--           { appDraw = drawUI
+--           , appChooseCursor = neverShowCursor
+--           , appHandleEvent = handleEvent
+--           , appStartEvent = return
+--           , appAttrMap = const gameAttrMap
+--           }
+--   putStrLn "Enter random seed:"
+--   (sd :: Int) <- readLn
+--   let initialState = newGame 0 10 sd User
+--   putStrLn $ show initialState
+--   finalState <- defaultMain app initialState
+--   putStrLn "Done"
