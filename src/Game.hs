@@ -37,7 +37,7 @@ import Brick (App (..), AttrMap, AttrName, Widget, Next, BrickEvent(..), EventM,
 
 type Cell = V2 Int
 data Game = Game
-    { _gid :: Maybe Int
+    { _gid :: Int
     , _turn :: Turn
     , _starts :: Turn
     , _randomSeed :: Int
@@ -133,7 +133,7 @@ moveCursor dir game = case dir of
 
 
 fixedGame :: Game
-fixedGame = Game { _gid = Nothing
+fixedGame = Game { _gid = (-1)
                  , _turn = Player
                  , _starts = Player
                  , _movesDone = 0
@@ -156,7 +156,7 @@ errGame :: Game
 errGame = newGame 101 0 1 Computer
 
 newGame :: Int -> Int -> Int -> Turn -> Game
-newGame gameId boardSize seed turn = Game { _gid = Just gameId
+newGame gameId boardSize seed turn = Game { _gid = gameId
                               , _turn = turn
                               , _starts = turn
                               , _err = False

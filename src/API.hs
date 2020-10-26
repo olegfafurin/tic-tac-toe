@@ -11,8 +11,8 @@ module API
 import Servant
 import Game
 
-type UserAPI = "newgame" :> QueryParam "size" Int :> QueryParam "seed" Int :> QueryParam "turn" Turn :> Get '[JSON] Game
-          :<|> "move" :> QueryParam "game_id" Int :> QueryParam "cell" Cell :> Get '[JSON] Game
+type UserAPI = "newgame" :> Capture "size" Int :> Capture "seed" Int :> Capture "turn" Turn :> Get '[JSON] Game
+          :<|> "move" :> Capture "game_id" Int :> Capture "cell" Cell :> Get '[JSON] Game
 
 userAPI :: Proxy UserAPI
 userAPI = Proxy

@@ -44,16 +44,13 @@ import Data.Sequence (Seq( (:<|) ) )
 
 
 
-newGameHandler :: (MVar [Maybe Game]) -> Maybe Int -> Maybe Int -> Maybe Turn -> Handler Game
+newGameHandler :: (MVar [Maybe Game]) -> Int -> Int -> Turn -> Handler Game
 newGameHandler mvar size seed turn = do
     games <- liftIO $ takeMVar mvar
     let freeSpot = elemIndex Nothing games
     let updatedGame :: Maybe Game = do
             f <- freeSpot
-            s <- size
-            sd <- seed
-            t <- turn
-            return $ newGame f s sd t
+            return $ newGame f size seed turn
     let newState = case freeSpot of
             Nothing -> games
             Just gameN -> games & element gameN .~ updatedGame
@@ -65,24 +62,22 @@ newGameHandler mvar size seed turn = do
             Nothing -> throwError err503
 
 
-moveHandler :: (MVar [Maybe Game]) -> Maybe Int -> Maybe Cell -> Handler Game
+moveHandler :: (MVar [Maybe Game]) -> Int -> Cell -> Handler Game
 moveHandler mvar gameId cell = do
     games <- liftIO $ takeMVar mvar
     let param :: Maybe (Game, Int) = do
-            gameN <- gameId
-            moveCell <- cell
-            previousGame <- games !! gameN
+            previousGame <- games !! gameId
             let uSign = case previousGame ^. starts of
                     Player   -> crosses
                     Computer -> zeroes
-            updatedGame :: Game <- if moveCell `notElem` (previousGame ^. crosses) && moveCell `notElem` (previousGame ^. zeroes)
-                                then Just (previousGame & uSign %~ ((:<|) moveCell))
+            updatedGame :: Game <- if cell `notElem` (previousGame ^. crosses) && cell `notElem` (previousGame ^. zeroes)
+                                then Just (previousGame & uSign %~ ((:<|) cell))
                                 else Nothing
             let compSign = case previousGame ^. starts of
                     Player   -> Zero
                     Computer -> Cross
             let nGame = unsafePerformIO (makeMove compSign updatedGame)
-            return $ (nGame, gameN)
+            return $ (nGame, gameId)
     liftIO $ case param of
             Just (game, num)  -> putMVar mvar (games & element num .~ Just game)
             Nothing -> putMVar mvar games

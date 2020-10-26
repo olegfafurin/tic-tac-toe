@@ -33,11 +33,11 @@ import qualified Brick.Widgets.Border.Style as BS
 sendNewGame :<|> sendMove = client userAPI
 
 mkReqMove :: Game -> ClientM Game
-mkReqMove g = sendMove (g ^. gid) (Just (g ^. selected))
+mkReqMove g = sendMove (g ^. gid) (g ^. selected)
 
 
 mkReqNewgame :: Int -> Int -> Turn -> ClientM Game
-mkReqNewgame size seed t = sendNewGame (Just size) (Just seed) (Just t)
+mkReqNewgame = sendNewGame
 
 mkMove :: Game -> IO Game
 mkMove g = do
