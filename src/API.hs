@@ -11,7 +11,7 @@ import Game
 import Servant
 
 type UserAPI
-   = "newgame" :> Capture "size" Int :> Capture "seed" Int :> Capture "turn" Player :> Get '[ JSON] Game
+   = "newgame" :> Capture "size" Int :> Capture "turn" Player :> Get '[ JSON] Game
    :<|> "move" :> Capture "game_id" Int :> Capture "cell" Cell :> Get '[ JSON] Game
    :<|> "finish" :> Capture "game_id" Int :> Get '[ JSON] ()
 

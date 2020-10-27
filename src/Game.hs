@@ -6,7 +6,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
--- {-# LANGUAGE LambdaCase #-}
 module Game
   ( moveCursor
   , newGame
@@ -20,38 +19,21 @@ module Game
   , zeroes
   , crosses
   , size
-  , fixedGame
+  , winner
   , oppositePlayer
   , errGame
   , makeMove
   , starts
   , gid
   , isGameOver
+  , getWinner
+  , getFirstPlayer
   ) where
 
 import Control.Lens hiding ((:<), (:>), Empty, (.=), (<|), (|>))
 import Linear.V2 (V2(..), _x, _y)
 
-import Brick
-  ( App(..)
-  , AttrMap
-  , AttrName
-  , BrickEvent(..)
-  , EventM
-  , Next
-  , Widget
-  , attrMap
-  , continue
-  , defaultMain
-  , hBox
-  , halt
-  , neverShowCursor
-  , on
-  , padLeftRight
-  , str
-  , vBox
-  , withAttr
-  )
+import Brick hiding (Direction)
 import Data.Aeson
 import Data.Aeson.Types
 import Data.List
@@ -102,8 +84,6 @@ instance ToJSON (V2 Int) where
 instance FromJSON (V2 Int) where
   parseJSON = withObject "V2 Int" $ \v -> V2 <$> v .: "x" <*> v .: "y"
 
--- instance FromHttpApiData (V2 Int)
--- instance ToHttpApiData (V2 Int)
 instance ToJSON Player
 
 instance ToJSON Game
@@ -112,7 +92,6 @@ instance FromJSON Player
 
 instance FromJSON Game
 
--- instance FromHttpApiData (V2 Int)
 instance ToHttpApiData Player where
   toUrlPiece :: Player -> Text
   toUrlPiece User = "player"
@@ -166,27 +145,16 @@ moveCursor dir game =
         then game & selected . _x -~ 1
         else game
 
-fixedGame :: Game
-fixedGame =
-  Game
-    { _gid = (-1)
-    , _starts = User
-    , _size = 10
-    , _winner = Nothing
-    , _crosses = []
-    , _zeroes = []
-    , _selected = V2 5 5
-    }
 
 oppositePlayer :: Player -> Player
 oppositePlayer Computer = User
 oppositePlayer User = Computer
 
 errGame :: Game
-errGame = newGame 101 0 1 Computer
+errGame = newGame 101 1 Computer
 
-newGame :: Int -> Int -> Int -> Player -> Game
-newGame gameId boardSize seed turn =
+newGame :: Int -> Int -> Player -> Game
+newGame gameId boardSize turn =
   Game
     { _gid = gameId
     , _starts = turn
@@ -194,7 +162,7 @@ newGame gameId boardSize seed turn =
     , _winner = Nothing
     , _crosses =
         if turn == Computer && gameId /= (-1)
-          then [(head $ genCell $ randomRs (0, boardSize - 1) (mkStdGen seed))]
+          then [(head $ genCell $ randomRs (0, boardSize - 1) (mkStdGen 241))]
           else []
     , _zeroes = []
     , _selected = V2 (boardSize `div` 2) (boardSize `div` 2)
@@ -205,11 +173,14 @@ genCell (a:b:rest) = V2 a b : genCell rest
 genCell [x] = error "function genCell is designed for infinite lists only"
 genCell [] = []
 
-getRandomCell :: Int -> IO Cell
-getRandomCell a = do
-  x <- getStdRandom $ randomR (0, a)
-  y <- getStdRandom $ randomR (0, a)
-  return $ V2 x y
+
+
+getFirstPlayer :: IO Player
+getFirstPlayer = do
+  randomTurn <- (randomIO :: IO Bool)
+  return $ case randomTurn of
+      True  -> Computer
+      False -> User
 
 
 winStrike :: Int -> Int
@@ -218,11 +189,16 @@ winStrike size
   | size <= 5 = 4
   | otherwise = 5
 
+isSubsetOf :: Eq a => [a] -> [a] -> Bool
+isSubsetOf l x = intersect l x == l
+
 getWinner :: Game -> Maybe Player
-getWinner game =
-  if (any (flip isInfixOf (game ^. crosses)) (possibleWinSets game))
+getWinner game
+  | game ^. winner /= Nothing = game ^. winner
+  | otherwise =
+  if (any (flip isSubsetOf (game ^. crosses)) (possibleWinSets game))
     then Just $ game ^. starts
-    else if (any (flip isInfixOf (game ^. zeroes)) (possibleWinSets game))
+    else if (any (flip isSubsetOf (game ^. zeroes)) (possibleWinSets game))
       then Just $ oppositePlayer $ game ^. starts
       else Nothing
 
@@ -244,6 +220,7 @@ possibleWinSets game = concat $ rows <> columns <> mainDiag <> sideDiag
 
 isGameOver :: Game -> Bool
 isGameOver game
+  | game ^. winner /= Nothing = True
   | (length $ game ^. crosses <> game ^. zeroes) == (game ^. size) ^ 2 = True
   | otherwise =
     case getWinner game of
@@ -253,9 +230,13 @@ isGameOver game
 
 movePriority :: ([Cell], [Cell]) -> [Cell] -> Int
 movePriority (compSigns, userSigns) proposal =
-  if (length $ proposal `intersect` userSigns) /= 0 then 0
-  else if alreadySet == (length proposal) then 0 else alreadySet
-  where alreadySet = length $ proposal `intersect` compSigns
+  if free > 0 then max 0 metric else metric
+  where
+    self = length $ proposal `intersect` compSigns
+    enemy = length $ proposal `intersect` userSigns
+    win = length proposal
+    free = win - self - enemy
+    metric = self - enemy * win
 
 
 makeMove :: Game -> Game
@@ -265,10 +246,11 @@ makeMove game = proposal
     pos = possibleWinSets game
     available :: [Cell] = maximumBy (comparing $ movePriority $ alreadySetCells) pos
     compSigns = fst alreadySetCells
+    userSigns = snd alreadySetCells
     (compLens, userLens) = case game ^. starts of
       User     -> (zeroes, crosses)
       Computer -> (crosses, zeroes)
-    findFreeCell :: [Cell] -> Maybe Cell = find (flip notElem compSigns)
+    findFreeCell :: [Cell] -> Maybe Cell = find (flip notElem $ compSigns <> userSigns)
     cl = case game ^. starts of
       User     -> zeroes
       Computer -> crosses

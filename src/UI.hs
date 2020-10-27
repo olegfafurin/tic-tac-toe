@@ -25,12 +25,30 @@ import Linear.V2 (V2(..), _x, _y)
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Servant.API
 import Servant.Client
--- import Servant.Types.SourceT (foreach)
-
 
 
 drawUI :: Game -> [Widget Name]
-drawUI g = [C.center $ drawGrid g]
+drawUI g = [C.center $ (drawState g) <+> drawGrid g]
+-- padRight (Pad 8)
+
+drawState :: Game -> Widget Name
+drawState g = hLimit 10
+  $ vBox [ drawResult g
+         , drawControls g]
+
+drawControls :: Game -> Widget Name
+drawControls g
+    | isGameOver g =  str "press q or \n<ESC> to quit"
+    | otherwise    = emptyWidget
+
+drawResult :: Game -> Widget Name
+drawResult g
+    | isGameOver g = case g ^. winner of
+        Just Computer -> withAttr loseAttr $ C.hCenter $ str "YOU LOSE"
+        Just User     -> withAttr winAttr  $ C.hCenter $ str "YOU WON"
+        Nothing       -> withAttr drawAttr  $ C.hCenter $ str "DRAW"
+    | otherwise    = emptyWidget
+
 
 drawGrid :: Game -> Widget Name
 drawGrid g = B.borderWithLabel (str "tic-tac-toe") $ vBox rows
@@ -55,12 +73,12 @@ drawCell state =
 
 emptyAttr, crossAttr, zeroAttr, selectedAttr :: AttrName
 crossAttr = "cross"
-
 zeroAttr = "zero"
-
 selectedAttr = "selected"
-
 emptyAttr = "empty"
+winAttr = "winAttr"
+loseAttr = "loseAttr"
+drawAttr = "drawAttr"
 
 gameAttrMap =
   attrMap
@@ -68,21 +86,7 @@ gameAttrMap =
     [ (crossAttr, fg V.red)
     , (zeroAttr, fg V.blue)
     , (selectedAttr, V.black `on` V.yellow)
+    , (loseAttr, fg V.red `V.withStyle` V.bold)
+    , (winAttr, fg V.green `V.withStyle` V.bold)
+    , (drawAttr, fg V.yellow `V.withStyle` V.bold)
     ]
-
--- main :: IO ()
--- main = do
---   let app =
---         App
---           { appDraw = drawUI
---           , appChooseCursor = neverShowCursor
---           , appHandleEvent = handleEvent
---           , appStartEvent = return
---           , appAttrMap = const gameAttrMap
---           }
---   putStrLn "Enter random seed:"
---   (sd :: Int) <- readLn
---   let initialState = newGame 0 10 sd User
---   putStrLn $ show initialState
---   finalState <- defaultMain app initialState
---   putStrLn "Done"

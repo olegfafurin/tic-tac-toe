@@ -13,33 +13,13 @@ import           GHC.Generics
 import           Network.HTTP.Client (defaultManagerSettings, newManager)
 import           Servant
 import           Servant.Client
-import qualified Graphics.Vty as V
--- import Brick
---   ( App(..)
---   , AttrMap
---   , AttrName
---   , BrickEvent(..)
---   , EventM
---   , Next
---   , Widget
---   , attrMap
---   , continue
---   , defaultMain
---   , hBox
---   , halt
---   , neverShowCursor
---   , on
---   , padLeftRight
---   , str
---   , vBox
---   , withAttr
---   )
 import           Brick
 import           Game
 import           System.Random
 import           UI                  (drawUI, gameAttrMap)
 import Control.Lens
 import Control.Monad.IO.Class
+import qualified Graphics.Vty as V
 
 sendNewGame :<|> sendMove :<|> sendFinishGame = client userAPI
 
@@ -51,7 +31,7 @@ clientEnv = do
 mkReqMove :: Game -> ClientM Game
 mkReqMove g = sendMove (g ^. gid) (g ^. selected)
 
-mkReqNewgame :: Int -> Int -> Player -> ClientM Game
+mkReqNewgame :: Int -> Player -> ClientM Game
 mkReqNewgame = sendNewGame
 
 mkReqFinish :: Int -> ClientM ()
@@ -65,15 +45,22 @@ mkMove g = do
       (mkReqMove g)
       env
   case res of
-    Left err    -> return g
-    Right nGame -> return nGame
+    Left err    -> do
+--       putStrLn "error on move"
+--       putStrLn $ show g
+      return g
+    Right nGame -> do
+--       putStrLn "OK move:"
+--       putStrLn $ "request"  <> show g
+--       putStrLn $ "response" <> show nGame
+      return nGame
 
-mkNewgame :: Int -> Int -> Player -> IO Game
-mkNewgame size seed t = do
+mkNewgame :: Int -> Player -> IO Game
+mkNewgame size player = do
   env <- clientEnv
   res <-
     runClientM
-      (mkReqNewgame size seed t)
+      (mkReqNewgame size player)
       env
   case res of
     Left err    -> return $ error "Unable to make a new game"
@@ -91,7 +78,19 @@ mkFinishGame game = do
     Left err -> return $ error "Unable to finish a game"
     Right () -> return ()
 
+
+restartGame :: Game ->  IO Game
+restartGame game
+  | isGameOver game = do
+      firstPlayer <- getFirstPlayer
+      mkNewgame (game ^. size) firstPlayer
+  | otherwise       = return game
+
+
 handleEvent :: Game -> BrickEvent Name () -> EventM Name (Next Game)
+handleEvent g (VtyEvent (V.EvKey (V.KChar 'r') [])) = do
+  res <- liftIO $ restartGame g
+  continue $ res
 handleEvent g (VtyEvent (V.EvKey V.KEnter [])) = do
   res <- liftIO $ mkMove g
   continue res
@@ -109,17 +108,19 @@ handleEvent g (VtyEvent (V.EvKey V.KLeft [])) = continue $ moveCursor LeftDir g
 handleEvent g _ = continue g
 
 
+readSize :: IO Int
+readSize = do
+  putStrLn "Enter grid size (side of the square from 3 to 20):"
+  side :: Int <- readLn
+  if side < 3 || side > 20 then readSize else return side
+
+
 main :: IO ()
 main = do
   let app = App drawUI neverShowCursor handleEvent return (const gameAttrMap)
-  putStrLn "Enter grid size (side of the square):"
-  side :: Int <- readLn
-  randomSeed <- (randomIO :: IO Int)
-  randomTurn <- (randomIO :: IO Bool)
-  let firstPlayer = case randomTurn of
-                      True  -> Computer
-                      False -> User
-  pseudoGame <- mkNewgame side randomSeed firstPlayer
+  side <- readSize
+  firstPlayer <- getFirstPlayer
+  pseudoGame <- mkNewgame side firstPlayer
   finalState <- defaultMain app pseudoGame
   putStrLn $ show pseudoGame
   putStrLn "Goodbye!"

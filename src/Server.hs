@@ -22,35 +22,19 @@ import Data.List
 import Data.Maybe
 import Data.Sequence (Seq((:<|)))
 import GHC.Generics
--- import Game
---   ( Cell
---   , CellState(..)
---   , Game(..)
---   , Player(..)
---   , crosses
---   , errGame
---   , fixedGame
---   , makeMove
---   , newGame
---   , oppositePlayer
---   , starts
---   , turn
---   , zeroes
---   ,isGame
---   )
 import Game
 import Linear.V2 (V2(..), _x, _y)
 import Network.Wai.Handler.Warp
 import Servant
 import System.IO.Unsafe
 
-newGameHandler :: (MVar [Maybe Game]) -> Int -> Int -> Player -> Handler Game
-newGameHandler mvar size seed turn = do
+newGameHandler :: (MVar [Maybe Game]) -> Int -> Player -> Handler Game
+newGameHandler mvar size turn = do
   games <- liftIO $ takeMVar mvar
   let freeSpot = elemIndex Nothing games
   let updatedGame :: Maybe Game = do
         f <- freeSpot
-        return $ newGame f size seed turn
+        return $ newGame f size turn
   let newState =
         case freeSpot of
           Nothing -> games
@@ -66,7 +50,7 @@ newGameHandler mvar size seed turn = do
 moveHandler :: (MVar [Maybe Game]) -> Int -> Cell -> Handler Game
 moveHandler mvar gameId cell = do
   games <- liftIO $ takeMVar mvar
-  let param :: Maybe (Game, Int) = do
+  let param :: Maybe (Game, Bool) = do
         previousGame <- games !! gameId
         let uSign =
               case previousGame ^. starts of
@@ -77,12 +61,20 @@ moveHandler mvar gameId cell = do
              cell `notElem` (previousGame ^. zeroes)
             then Just (previousGame & uSign %~ ((:) cell))
             else Nothing
-        let nGame = makeMove updatedGame
-        return $ (nGame, gameId)
-  liftIO $
-    case param of
-      Just (game, num) -> putMVar mvar (games & element num .~ Just game)
-      Nothing -> putMVar mvar games
+        case getWinner updatedGame of
+            Just User -> return (updatedGame & winner .~ Just User, True)
+            Nothing   -> do
+                Just $ unsafePerformIO $ putStrLn "user didn't win"
+                let responseGame = makeMove updatedGame
+                case getWinner responseGame of
+                    Just Computer -> return (responseGame & winner .~ Just Computer, True)
+                    Nothing       -> return (responseGame, False)
+  liftIO $ case param of
+    Just (game, False) -> putMVar mvar (games & element gameId .~ Just game)
+    Just (game, True)  -> do
+        putStrLn $ "game is to be deleted:" <> show (game ^. gid)
+        putMVar mvar (games & element gameId .~ Nothing)
+    Nothing -> putMVar mvar games
   case param of
     Just (game, num) -> return game
     Nothing -> throwError err400
