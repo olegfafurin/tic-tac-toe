@@ -6,21 +6,20 @@ module Client
   ( main
   ) where
 
-import API (UserAPI, userAPI)
+import API (userAPI)
 import Brick
 import Control.Lens
 import Control.Monad.IO.Class
-import Data.Aeson
-import Data.Proxy
-import GHC.Generics
 import Game
 import qualified Graphics.Vty as V
-import Linear.V2
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Servant
 import Servant.Client
-import System.Random
 import UI (drawUI, gameAttrMap)
+
+sendNewGame :: Int -> Player -> ClientM Game
+sendMove :: Int -> Cell -> ClientM Game
+sendFinishGame :: Int -> ClientM ()
 
 sendNewGame :<|> sendMove :<|> sendFinishGame = client userAPI
 
@@ -43,15 +42,15 @@ mkMove d = do
   env <- clientEnv
   res <- runClientM (mkReqMove d) env
   case res of
-    Left err -> return $ d ^. game
+    Left _      -> return $ d ^. game
     Right nGame -> return nGame
 
 mkNewgame :: Int -> Player -> IO Game
-mkNewgame size player = do
+mkNewgame boardSize player = do
   env <- clientEnv
-  res <- runClientM (mkReqNewgame size player) env
+  res <- runClientM (mkReqNewgame boardSize player) env
   case res of
-    Left err -> return $ error "Unable to make a new game"
+    Left _ -> return $ error "Unable to make a new game"
     Right nGame -> return nGame
 
 mkFinishGame :: Display -> IO ()
@@ -59,15 +58,15 @@ mkFinishGame d = do
   env <- clientEnv
   res <- runClientM (mkReqFinish $ d ^. game . gid) env
   case res of
-    Left err -> return $ error "Unable to finish a game"
+    Left _ -> return $ error "Unable to finish a game"
     Right () -> return ()
 
 restartGame :: Game -> IO Game
-restartGame game
-  | isGameOver game = do
+restartGame g
+  | isGameOver g = do
     firstPlayer <- getFirstPlayer
-    mkNewgame (game ^. size) firstPlayer
-  | otherwise = return game
+    mkNewgame (g ^. size) firstPlayer
+  | otherwise = return g
 
 handleEvent :: Display -> BrickEvent Name () -> EventM Name (Next Display)
 handleEvent d (VtyEvent (V.EvKey (V.KChar 'r') [])) = do
@@ -104,7 +103,7 @@ main = do
   firstPlayer <- getFirstPlayer
   firstState <- mkNewgame side firstPlayer
   let half = firstState ^. size `div` 2
-  let startCell = V2 half half
-  finalState <- defaultMain app (Display firstState $ startCell)
+  let startCell = Cell half half
+  _ <- defaultMain app (Display firstState $ startCell)
 --   putStrLn $ show firstState
   putStrLn "Goodbye!"

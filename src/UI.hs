@@ -9,22 +9,12 @@ module UI
   , drawUI
   ) where
 
-import API
 import Brick
 import qualified Brick.Widgets.Border as B
-import qualified Brick.Widgets.Border.Style as BS
 import qualified Brick.Widgets.Center as C
 import Control.Lens hiding ((:<), (:>), Empty, (<|), (|>))
-import Control.Monad.IO.Class
-import Data.Aeson
-import Data.Proxy
-import GHC.Generics
 import Game
 import qualified Graphics.Vty as V
-import Linear.V2 (V2(..), _x, _y)
-import Network.HTTP.Client (defaultManagerSettings, newManager)
-import Servant.API
-import Servant.Client
 
 drawUI :: Display -> [Widget Name]
 drawUI d = [C.center $ (drawState $ d ^. game) <+> drawGrid d]
@@ -52,7 +42,7 @@ drawGrid d = B.borderWithLabel (str "tic-tac-toe") $ vBox rows
     g = d ^. game
     rows = [hBox $ cellsInRow r | r <- [g ^. size - 1,g ^. size - 2 .. 0]]
     cellsInRow y =
-      [padLeftRight 1 $ drawCoord (V2 x y) | x <- [0 .. g ^. size - 1]]
+      [padLeftRight 1 $ drawCoord (Cell x y) | x <- [0 .. g ^. size - 1]]
     drawCoord cell =
       if (cell == d ^. selected)
         then withAttr selectedAttr $ cellAt cell
@@ -67,7 +57,7 @@ drawGrid d = B.borderWithLabel (str "tic-tac-toe") $ vBox rows
       | cell `elem` g ^. zeroes = withAttr zeroAttr
       | otherwise = withAttr emptyAttr
 
-emptyAttr, crossAttr, zeroAttr, selectedAttr :: AttrName
+emptyAttr, crossAttr, zeroAttr, selectedAttr, winAttr, loseAttr, drawAttr :: AttrName
 crossAttr = "cross"
 
 zeroAttr = "zero"
@@ -82,6 +72,8 @@ loseAttr = "loseAttr"
 
 drawAttr = "drawAttr"
 
+
+gameAttrMap :: AttrMap
 gameAttrMap =
   attrMap
     V.defAttr

@@ -9,7 +9,7 @@
 module Game
   ( moveCursor
   , newGame
-  , Game
+  , Game (..)
   , Name
   , Cell(..)
   , Player(..)
@@ -30,13 +30,8 @@ module Game
   , getFirstPlayer
   ) where
 
---   , errGame
 import Control.Lens hiding ((:<), (:>), Empty, (.=), (<|), (|>))
-import Linear.V2 (V2(..), _x, _y)
-
-import Brick hiding (Direction)
 import Data.Aeson
-import Data.Aeson.Types
 import Data.List
 import Data.Ord
 import Data.Text (Text)
@@ -45,7 +40,11 @@ import GHC.Generics
 import System.Random
 import Web.HttpApiData
 
-type Cell = V2 Int
+data Cell = Cell
+  { __x :: Int
+  , __y ::Int
+  }
+  deriving (Show, Eq, Generic)
 
 data Game =
   Game
@@ -76,12 +75,12 @@ data Direction
   | LeftDir
   deriving (Show)
 
-instance ToJSON (V2 Int) where
-  toJSON (V2 x y) = object ["x" .= x, "y" .= y]
-  toEncoding (V2 x y) = pairs ("x" .= x <> "y" .= y)
+instance ToJSON Cell where
+  toJSON (Cell x y) = object ["x" .= x, "y" .= y]
+  toEncoding (Cell x y) = pairs ("x" .= x <> "y" .= y)
 
-instance FromJSON (V2 Int) where
-  parseJSON = withObject "V2 Int" $ \v -> V2 <$> v .: "x" <*> v .: "y"
+instance FromJSON Cell where
+  parseJSON = withObject "Cell" $ \v -> Cell <$> v .: "x" <*> v .: "y"
 
 instance ToJSON Player
 
@@ -103,14 +102,14 @@ instance FromHttpApiData Player where
   parseUrlPiece a = Left a
 
 instance ToHttpApiData Cell where
-  toUrlPiece :: (V2 Int) -> Text
-  toUrlPiece (V2 x y) = T.pack $ show x ++ "_" ++ show y
+  toUrlPiece :: Cell -> Text
+  toUrlPiece (Cell x y) = T.pack $ show x ++ "_" ++ show y
 
 instance FromHttpApiData Cell where
-  parseUrlPiece :: Text -> Either Text (V2 Int)
+  parseUrlPiece :: Text -> Either Text Cell
   parseUrlPiece str =
     if '_' `elem` T.unpack str
-      then Right $ V2 (read . T.unpack $ a !! 0) (read . T.unpack $ a !! 1)
+      then Right $ Cell (read . T.unpack $ a !! 0) (read . T.unpack $ a !! 1)
       else Left str
     where
       a = T.splitOn (T.pack "_") str
@@ -120,6 +119,8 @@ type Name = ()
 makeLenses ''Game
 
 makeLenses ''Display
+
+makeLenses ''Cell
 
 moveCursor :: Direction -> Display -> Display
 moveCursor dir d = d & selected .~ newSelection
@@ -149,9 +150,6 @@ oppositePlayer :: Player -> Player
 oppositePlayer Computer = User
 oppositePlayer User = Computer
 
-errGame :: Game
-errGame = newGame 101 1 Computer
-
 newGame :: Int -> Int -> Player -> Game
 newGame gameId boardSize turn =
   Game
@@ -167,8 +165,8 @@ newGame gameId boardSize turn =
     }
 
 genCell :: [Int] -> [Cell]
-genCell (a:b:rest) = V2 a b : genCell rest
-genCell [x] = error "function genCell is designed for infinite lists only"
+genCell (a:b:rest) = Cell a b : genCell rest
+genCell [_] = error "function genCell is designed for infinite lists only"
 genCell [] = []
 
 getFirstPlayer :: IO Player
@@ -180,52 +178,44 @@ getFirstPlayer = do
       False -> User
 
 winStrike :: Int -> Int
-winStrike size
-  | size == 3 = 3
-  | size <= 5 = 4
+winStrike boardSize
+  | boardSize == 3 = 3
+  | boardSize <= 5 = 4
   | otherwise = 5
 
 isSubsetOf :: Eq a => [a] -> [a] -> Bool
 isSubsetOf l x = intersect l x == l
 
 getWinner :: Game -> Maybe Player
-getWinner game
-  | game ^. winner /= Nothing = game ^. winner
+getWinner g
+  | g ^. winner /= Nothing = g ^. winner
   | otherwise =
-    if (any (flip isSubsetOf (game ^. crosses)) (possibleWinSets game))
-      then Just $ game ^. starts
-      else if (any (flip isSubsetOf (game ^. zeroes)) (possibleWinSets game))
-             then Just $ oppositePlayer $ game ^. starts
+    if (any (flip isSubsetOf (g ^. crosses)) (possibleWinSets g))
+      then Just $ g ^. starts
+      else if (any (flip isSubsetOf (g ^. zeroes)) (possibleWinSets g))
+             then Just $ oppositePlayer $ g ^. starts
              else Nothing
 
 possibleWinSets :: Game -> [[Cell]]
-possibleWinSets game = concat $ rows <> columns <> mainDiag <> sideDiag
+possibleWinSets g = concat $ rows <> columns <> mainDiag <> sideDiag
   where
     rows =
-      [ [[V2 i (j + k) | k <- [0 .. w - 1]] | j <- [0 .. s - w]]
-      | i <- [0 .. s - 1]
-      ]
+      [ [[Cell i (j + k) | k <- [0 .. w - 1]] | j <- [0 .. s - w]] | i <- [0 .. s - 1]]
     columns =
-      [ [[V2 (i + k) j | k <- [0 .. w - 1]] | i <- [0 .. s - w]]
-      | j <- [0 .. s - 1]
-      ]
+      [ [[Cell (i + k) j | k <- [0 .. w - 1]] | i <- [0 .. s - w]] | j <- [0 .. s - 1]]
     mainDiag =
-      [ [[V2 (i + k) (j + k) | k <- [0 .. w - 1]] | i <- [0 .. s - w]]
-      | j <- [0 .. s - w]
-      ]
+      [ [[Cell (i + k) (j + k) | k <- [0 .. w - 1]] | i <- [0 .. s - w]] | j <- [0 .. s - w]]
     sideDiag =
-      [ [[V2 (i + k) (j - k) | k <- [0 .. w - 1]] | i <- [0 .. s - w]]
-      | j <- [w - 1 .. s - 1]
-      ]
+      [ [[Cell (i + k) (j - k) | k <- [0 .. w - 1]] | i <- [0 .. s - w]] | j <- [w - 1 .. s - 1]]
     w = winStrike s
-    s = game ^. size
+    s = g ^. size
 
 isGameOver :: Game -> Bool
-isGameOver game
-  | game ^. winner /= Nothing = True
-  | (length $ game ^. crosses <> game ^. zeroes) == (game ^. size) ^ 2 = True
+isGameOver g
+  | g ^. winner /= Nothing = True
+  | (length $ g ^. crosses <> g ^. zeroes) == (g ^. size) ^ (2 :: Int) = True
   | otherwise =
-    case getWinner game of
+    case getWinner g of
       Just _ -> True
       Nothing -> False
 
@@ -242,24 +232,24 @@ movePriority (compSigns, userSigns) proposal =
     metric = self - enemy * win
 
 makeMove :: Game -> Game
-makeMove game = proposal
+makeMove g = proposal
   where
-    alreadySetCells = (game ^. compLens, game ^. userLens)
-    pos = possibleWinSets game
+    alreadySetCells = (g ^. compLens, g ^. userLens)
+    pos = possibleWinSets g
     available = maximumBy (comparing $ movePriority $ alreadySetCells) pos
     compSigns = fst alreadySetCells
     userSigns = snd alreadySetCells
     (compLens, userLens) =
-      case game ^. starts of
+      case g ^. starts of
         User -> (zeroes, crosses)
         Computer -> (crosses, zeroes)
     findFreeCell :: [Cell] -> Maybe Cell =
       find (flip notElem $ compSigns <> userSigns)
     cl =
-      case game ^. starts of
+      case g ^. starts of
         User -> zeroes
         Computer -> crosses
     proposal =
       case findFreeCell available of
-        Just cell -> game & cl %~ (<> [cell])
-        Nothing -> game
+        Just cell -> g & cl %~ (<> [cell])
+        Nothing -> g
