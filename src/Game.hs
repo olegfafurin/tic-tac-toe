@@ -13,23 +13,24 @@ module Game
   , Name
   , Cell(..)
   , Player(..)
-  , CellState(..)
+  , Display(..)
   , Direction(..)
   , selected
   , zeroes
   , crosses
   , size
-  , winner
-  , oppositePlayer
-  , errGame
-  , makeMove
   , starts
   , gid
+  , game
+  , winner
+  , oppositePlayer
+  , makeMove
   , isGameOver
   , getWinner
   , getFirstPlayer
   ) where
 
+--   , errGame
 import Control.Lens hiding ((:<), (:>), Empty, (.=), (<|), (|>))
 import Linear.V2 (V2(..), _x, _y)
 
@@ -54,7 +55,6 @@ data Game =
     , _winner :: Maybe Player
     , _crosses :: [Cell]
     , _zeroes :: [Cell]
-    , _selected :: Cell
     }
   deriving (Show, Eq, Generic)
 
@@ -63,12 +63,11 @@ data Player
   | Computer
   deriving (Show, Eq, Generic)
 
-data CellState
-  = EmptyCell
-  | Cross
-  | Zero
-  | Selected
-  deriving (Show, Eq)
+data Display =
+  Display
+    { _game :: Game
+    , _selected :: Cell
+    }
 
 data Direction
   = UpDir
@@ -120,31 +119,31 @@ type Name = ()
 
 makeLenses ''Game
 
-oppositeSign :: CellState -> CellState
-oppositeSign Cross = Zero
-oppositeSign Zero = Cross
-oppositeSign _ = error "no opposite sign"
+makeLenses ''Display
 
-moveCursor :: Direction -> Game -> Game
-moveCursor dir game =
-  case dir of
-    UpDir ->
-      if game ^. selected . _y < game ^. size - 1
-        then game & selected . _y +~ 1
-        else game
-    RightDir ->
-      if game ^. selected . _x < game ^. size - 1
-        then game & selected . _x +~ 1
-        else game
-    DownDir ->
-      if game ^. selected . _y > 0
-        then game & selected . _y -~ 1
-        else game
-    LeftDir ->
-      if game ^. selected . _x > 0
-        then game & selected . _x -~ 1
-        else game
-
+moveCursor :: Direction -> Display -> Display
+moveCursor dir d = d & selected .~ newSelection
+  where
+    n = d ^. game . size
+    sel :: Cell = d ^. selected
+    newSelection :: Cell =
+      case dir of
+        UpDir ->
+          if sel ^. _y < n - 1
+            then sel & _y +~ 1
+            else sel
+        RightDir ->
+          if sel ^. _x < n - 1
+            then sel & _x +~ 1
+            else sel
+        DownDir ->
+          if sel ^. _y > 0
+            then sel & _y -~ 1
+            else sel
+        LeftDir ->
+          if sel ^. _x > 0
+            then sel & _x -~ 1
+            else sel
 
 oppositePlayer :: Player -> Player
 oppositePlayer Computer = User
@@ -165,7 +164,6 @@ newGame gameId boardSize turn =
           then [(head $ genCell $ randomRs (0, boardSize - 1) (mkStdGen 241))]
           else []
     , _zeroes = []
-    , _selected = V2 (boardSize `div` 2) (boardSize `div` 2)
     }
 
 genCell :: [Int] -> [Cell]
@@ -173,15 +171,13 @@ genCell (a:b:rest) = V2 a b : genCell rest
 genCell [x] = error "function genCell is designed for infinite lists only"
 genCell [] = []
 
-
-
 getFirstPlayer :: IO Player
 getFirstPlayer = do
   randomTurn <- (randomIO :: IO Bool)
-  return $ case randomTurn of
-      True  -> Computer
+  return $
+    case randomTurn of
+      True -> Computer
       False -> User
-
 
 winStrike :: Int -> Int
 winStrike size
@@ -196,27 +192,33 @@ getWinner :: Game -> Maybe Player
 getWinner game
   | game ^. winner /= Nothing = game ^. winner
   | otherwise =
-  if (any (flip isSubsetOf (game ^. crosses)) (possibleWinSets game))
-    then Just $ game ^. starts
-    else if (any (flip isSubsetOf (game ^. zeroes)) (possibleWinSets game))
-      then Just $ oppositePlayer $ game ^. starts
-      else Nothing
-
+    if (any (flip isSubsetOf (game ^. crosses)) (possibleWinSets game))
+      then Just $ game ^. starts
+      else if (any (flip isSubsetOf (game ^. zeroes)) (possibleWinSets game))
+             then Just $ oppositePlayer $ game ^. starts
+             else Nothing
 
 possibleWinSets :: Game -> [[Cell]]
 possibleWinSets game = concat $ rows <> columns <> mainDiag <> sideDiag
   where
-  rows =
-    [[[V2 i (j + k) | k <- [0 .. w - 1]] | j <- [0 .. s - w]] | i <- [0 .. s - 1]]
-  columns =
-    [[[V2 (i + k) j | k <- [0 .. w - 1]] | i <- [0 .. s - w]] | j <- [0 .. s - 1]]
-  mainDiag =
-    [[[V2 (i + k) (j + k) | k <- [0 .. w - 1]] | i <- [0 .. s - w]] | j <- [0 .. s - w]]
-  sideDiag =
-    [[[V2 (i + k) (j - k) | k <- [0 .. w - 1]] | i <- [0 .. s - w]] | j <- [w - 1 .. s - 1]]
-  w = winStrike s
-  s = game ^. size
-
+    rows =
+      [ [[V2 i (j + k) | k <- [0 .. w - 1]] | j <- [0 .. s - w]]
+      | i <- [0 .. s - 1]
+      ]
+    columns =
+      [ [[V2 (i + k) j | k <- [0 .. w - 1]] | i <- [0 .. s - w]]
+      | j <- [0 .. s - 1]
+      ]
+    mainDiag =
+      [ [[V2 (i + k) (j + k) | k <- [0 .. w - 1]] | i <- [0 .. s - w]]
+      | j <- [0 .. s - w]
+      ]
+    sideDiag =
+      [ [[V2 (i + k) (j - k) | k <- [0 .. w - 1]] | i <- [0 .. s - w]]
+      | j <- [w - 1 .. s - 1]
+      ]
+    w = winStrike s
+    s = game ^. size
 
 isGameOver :: Game -> Bool
 isGameOver game
@@ -227,10 +229,11 @@ isGameOver game
       Just _ -> True
       Nothing -> False
 
-
 movePriority :: ([Cell], [Cell]) -> [Cell] -> Int
 movePriority (compSigns, userSigns) proposal =
-  if free > 0 then max 0 metric else metric
+  if free > 0
+    then max 0 metric
+    else metric
   where
     self = length $ proposal `intersect` compSigns
     enemy = length $ proposal `intersect` userSigns
@@ -238,22 +241,25 @@ movePriority (compSigns, userSigns) proposal =
     free = win - self - enemy
     metric = self - enemy * win
 
-
 makeMove :: Game -> Game
 makeMove game = proposal
   where
     alreadySetCells = (game ^. compLens, game ^. userLens)
     pos = possibleWinSets game
-    available :: [Cell] = maximumBy (comparing $ movePriority $ alreadySetCells) pos
+    available = maximumBy (comparing $ movePriority $ alreadySetCells) pos
     compSigns = fst alreadySetCells
     userSigns = snd alreadySetCells
-    (compLens, userLens) = case game ^. starts of
-      User     -> (zeroes, crosses)
-      Computer -> (crosses, zeroes)
-    findFreeCell :: [Cell] -> Maybe Cell = find (flip notElem $ compSigns <> userSigns)
-    cl = case game ^. starts of
-      User     -> zeroes
-      Computer -> crosses
-    proposal = case findFreeCell available of
-      Just cell -> game & cl %~ (<> [cell])
-      Nothing   -> game
+    (compLens, userLens) =
+      case game ^. starts of
+        User -> (zeroes, crosses)
+        Computer -> (crosses, zeroes)
+    findFreeCell :: [Cell] -> Maybe Cell =
+      find (flip notElem $ compSigns <> userSigns)
+    cl =
+      case game ^. starts of
+        User -> zeroes
+        Computer -> crosses
+    proposal =
+      case findFreeCell available of
+        Just cell -> game & cl %~ (<> [cell])
+        Nothing -> game

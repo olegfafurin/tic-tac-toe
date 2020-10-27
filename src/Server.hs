@@ -62,32 +62,35 @@ moveHandler mvar gameId cell = do
             then Just (previousGame & uSign %~ ((:) cell))
             else Nothing
         case getWinner updatedGame of
-            Just User -> return (updatedGame & winner .~ Just User, True)
-            Nothing   -> do
-                Just $ unsafePerformIO $ putStrLn "user didn't win"
-                let responseGame = makeMove updatedGame
-                case getWinner responseGame of
-                    Just Computer -> return (responseGame & winner .~ Just Computer, True)
-                    Nothing       -> return (responseGame, False)
-  liftIO $ case param of
-    Just (game, False) -> putMVar mvar (games & element gameId .~ Just game)
-    Just (game, True)  -> do
+          Just User -> return (updatedGame & winner .~ Just User, True)
+          Nothing -> do
+            Just $ unsafePerformIO $ putStrLn "user didn't win"
+            let responseGame = makeMove updatedGame
+            case getWinner responseGame of
+              Just Computer ->
+                return (responseGame & winner .~ Just Computer, True)
+              Nothing -> return (responseGame, False)
+  liftIO $
+    case param of
+      Just (game, False) -> putMVar mvar (games & element gameId .~ Just game)
+      Just (game, True) -> do
         putStrLn $ "game is to be deleted:" <> show (game ^. gid)
         putMVar mvar (games & element gameId .~ Nothing)
-    Nothing -> putMVar mvar games
+      Nothing -> putMVar mvar games
   case param of
     Just (game, num) -> return game
     Nothing -> throwError err400
 
 finishHandler :: (MVar [Maybe Game]) -> Int -> Handler ()
 finishHandler mvar gameId = do
-    games <- liftIO $ takeMVar mvar
-    liftIO $ putMVar mvar (games & element gameId .~ Nothing)
-    return ()
+  games <- liftIO $ takeMVar mvar
+  liftIO $ putMVar mvar (games & element gameId .~ Nothing)
+  return ()
 
 main :: IO ()
 main = do
   mv <- newMVar ([Nothing :: Maybe Game | i <- [1 .. 100]])
-  let server :: Server UserAPI = (newGameHandler mv) :<|> (moveHandler mv) :<|> (finishHandler mv)
+  let server :: Server UserAPI =
+        (newGameHandler mv) :<|> (moveHandler mv) :<|> (finishHandler mv)
   let app :: Application = serve userAPI server
   run 2039 app

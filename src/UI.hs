@@ -26,58 +26,60 @@ import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Servant.API
 import Servant.Client
 
-
-drawUI :: Game -> [Widget Name]
-drawUI g = [C.center $ (drawState g) <+> drawGrid g]
--- padRight (Pad 8)
+drawUI :: Display -> [Widget Name]
+drawUI d = [C.center $ (drawState $ d ^. game) <+> drawGrid d]
 
 drawState :: Game -> Widget Name
-drawState g = hLimit 10
-  $ vBox [ drawResult g
-         , drawControls g]
+drawState g = setAvailableSize (20, 40) $ vBox [drawResult g, drawControls g]
 
 drawControls :: Game -> Widget Name
 drawControls g
-    | isGameOver g =  str "press q or \n<ESC> to quit"
-    | otherwise    = emptyWidget
+  | isGameOver g = txtWrap "press q or <ESC> to quit, r for restart"
+  | otherwise = emptyWidget
 
 drawResult :: Game -> Widget Name
 drawResult g
-    | isGameOver g = case g ^. winner of
-        Just Computer -> withAttr loseAttr $ C.hCenter $ str "YOU LOSE"
-        Just User     -> withAttr winAttr  $ C.hCenter $ str "YOU WON"
-        Nothing       -> withAttr drawAttr  $ C.hCenter $ str "DRAW"
-    | otherwise    = emptyWidget
+  | isGameOver g =
+    case g ^. winner of
+      Just Computer -> withAttr loseAttr $ C.hCenter $ str "YOU LOSE"
+      Just User -> withAttr winAttr $ C.hCenter $ str "YOU WON"
+      Nothing -> withAttr drawAttr $ C.hCenter $ str "DRAW"
+  | otherwise = emptyWidget
 
-
-drawGrid :: Game -> Widget Name
-drawGrid g = B.borderWithLabel (str "tic-tac-toe") $ vBox rows
+drawGrid :: Display -> Widget Name
+drawGrid d = B.borderWithLabel (str "tic-tac-toe") $ vBox rows
   where
+    g = d ^. game
     rows = [hBox $ cellsInRow r | r <- [g ^. size - 1,g ^. size - 2 .. 0]]
     cellsInRow y =
       [padLeftRight 1 $ drawCoord (V2 x y) | x <- [0 .. g ^. size - 1]]
-    drawCoord = drawCell . cellAt
-    cellAt c
-      | c == g ^. selected = Selected
-      | c `elem` g ^. crosses = Cross
-      | c `elem` g ^. zeroes = Zero
-      | otherwise = EmptyCell
-
-drawCell :: CellState -> Widget Name
-drawCell state =
-  case state of
-    EmptyCell -> withAttr emptyAttr (str ".")
-    Cross -> withAttr crossAttr (str "X")
-    Zero -> withAttr zeroAttr (str "O")
-    Selected -> withAttr selectedAttr (str " ")
+    drawCoord cell =
+      if (cell == d ^. selected)
+        then withAttr selectedAttr $ cellAt cell
+        else setAttr cell $ cellAt cell
+    cellAt cell
+      | cell `elem` g ^. crosses = str "X"
+      | cell `elem` g ^. zeroes = str "O"
+      | otherwise = str "."
+    setAttr cell
+      | cell == d ^. selected = withAttr selectedAttr
+      | cell `elem` g ^. crosses = withAttr crossAttr
+      | cell `elem` g ^. zeroes = withAttr zeroAttr
+      | otherwise = withAttr emptyAttr
 
 emptyAttr, crossAttr, zeroAttr, selectedAttr :: AttrName
 crossAttr = "cross"
+
 zeroAttr = "zero"
+
 selectedAttr = "selected"
+
 emptyAttr = "empty"
+
 winAttr = "winAttr"
+
 loseAttr = "loseAttr"
+
 drawAttr = "drawAttr"
 
 gameAttrMap =
@@ -85,8 +87,8 @@ gameAttrMap =
     V.defAttr
     [ (crossAttr, fg V.red)
     , (zeroAttr, fg V.blue)
-    , (selectedAttr, V.black `on` V.yellow)
     , (loseAttr, fg V.red `V.withStyle` V.bold)
     , (winAttr, fg V.green `V.withStyle` V.bold)
     , (drawAttr, fg V.yellow `V.withStyle` V.bold)
+    , (selectedAttr, bg V.yellow)
     ]
